@@ -3,16 +3,14 @@ import json
 import trivium
 
 def main():
-    parser = argparse.ArgumentParser(description='''Distill tool for Trivium\n
-    Required Input: Distill -m -d [model_name] [diagram_name] --> pulls down network model\n
-    Optional Input: Distill -m -d -n [model_name] [diagram_name] [nessus_list] --> performs and outputs Nessus Scan''', formatter_class=argparse.RawTextHelpFormatter)
+    # initialize parser
+    parser = argparse.ArgumentParser()
 
-    parser.add_argument("-m", "--model", help="Model", action="store_true")
-    parser.add_argument("model_name", type=str, help="Model ID")
-    parser.add_argument("-d", "--diagram", help="Diagram in the Trivium model", action="store_true")
-    parser.add_argument("diagram_name", type=str, help="Diagram ID")
-    parser.add_argument("-n", "--nessus", help="Performs a nessus scan with a list of files containing IP addresses", action="store_true")
-    parser.add_argument("nessus_list", nargs='?', type=str, help="List of Files containing IP addresses")
+    # display landing screen for command-line tool
+    parser.add_argument("-m", "--model", type=str, help="Model Name", required=True)
+    parser.add_argument("-d", "--diagram", type=str, help="Diagram Name", required=True)
+    parser.add_argument("-n", "--nessus", nargs='+', type=str, help="Nessus Files", required=True)
+
     args = parser.parse_args()
 
     if args.model and args.diagram and args.nessus:
