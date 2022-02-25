@@ -1,14 +1,61 @@
 #initialize dependencies
 import argparse
+import csv
 import json
 import random
 import trivium
 import networkx as nx
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 # returns a random value between 1-10 (not true random)
 def rand_scores():
     return random.randint(1,10)
 
+def csv_to_json(csvFilePath, jsonFilePath):
+        jsonArray = []
+        labels = ['IP Address', 'Risk Factor', 'Severity', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
+
+        # read csv file
+        with open(csvFilePath, encoding='utf-8') as csvf:
+            # load csv file data using csv library's dictionary reader
+            csvReader = csv.DictReader(csvf, labels)
+
+            # convert each csv row into python dict
+            for row in csvReader:
+                # add this python dict to json array
+                # jsonArray.append(labels)
+                jsonArray.append(row)
+
+
+        # convert python jsonArray to JSON String and write to file
+        with open(jsonFilePath, 'w', encoding='utf-8') as jsonf:
+            jsonString = json.dumps(jsonArray, indent=4)
+            jsonf.write(jsonString)    
+
+def add_scores(jsonFilePath):
+        distill_scores = {}
+        score = 0
+        # Opens the json file "report.json"
+        with open(jsonFilePath, "r") as f:
+            data = json.load(f)
+        
+        # Grabs the IP Address of the machines and creates the dictionary.
+        for ip in range(len(data)):
+            distill_scores.update({data[ip].get('IP Address'): '0'})
+
+        # Updates the appropiate value of each dictionary key with Distill Scores.
+        for key in distill_scores.keys():
+            for sev in range(len(data)):
+                if data[sev].get('IP Address') == key:
+                    score = int(data[sev].get('Severity')) + score
+                    
+            score = score / 1000
+            distill_scores.update({key:str(score)})
+            score = 0
+        
+        return distill_scores
+    
 # helper function to retrieve a list of nodes
 def get_nodes(model_name, diagram_name):
     # set allowed types
@@ -58,6 +105,45 @@ def create_graph(nodelist, edgelist):
     
     return G
     
+def distill_score(filename):
+    score_dict = {}
+    tree = ET.parse(filename)
+
+    with open('report.csv', 'w') as report_file:
+        for host in tree.findall('Report/ReportHost'):
+            ipaddr = host.find("HostProperties/tag/[@name='host-ip']").text
+
+            for item in host.findall('ReportItem'):
+                risk_factor = item.find('risk_factor').text
+                severity = item.get('severity')
+                pluginID = item.get('pluginID')
+                pluginName = item.get('pluginName')
+                port = item.get('port')
+                protocol = item.get('protocol')
+
+                report_file.write(
+                ipaddr + ',' + \
+                risk_factor + ',' + \
+                severity + ',' + \
+                port + ',' + \
+                protocol + ',' + \
+                pluginID + ',' + \
+                '"' + pluginName + '"' + '\n'
+                )
+
+
+    csvFilePath = r'report.csv'
+    jsonFilePath = r'report.json'
+    csv_to_json(csvFilePath, jsonFilePath)
+
+    score_dict = add_scores(jsonFilePath)
+    return score_dict
+
+def match_ip(ip_val, distill_scores):
+    for key in distill_scores.keys():
+        if ip_val == key:
+            return distill_scores[key]
+
 def main():
     # initialize parser
     parser = argparse.ArgumentParser()
@@ -65,12 +151,13 @@ def main():
     # display landing screen for command-line tool
     parser.add_argument("-m", "--model", type=str, help="Model Name", required=True)
     parser.add_argument("-d", "--diagram", type=str, help="Diagram Name", required=True)
-    parser.add_argument("-n", "--nessus", nargs='+', type=str, help="Nessus Files", required=True)
+    parser.add_argument("-n", "--nessus", type=argparse.FileType('r'), help="Nessus Files", required=True)
     args = parser.parse_args()
 
     # initialization from user's command-line input
     model = args.model
     diagram = args.diagram
+    filename = args.nessus
 
     # retrieve nodes and edges from user's Trivium diagram
     nodes = get_nodes(model, diagram)
@@ -96,13 +183,14 @@ def main():
     dictlist_nodes = [dict() for x in range(len(node_ids))]
     dictlist_edges = [dict() for x in range(len(edge_ids))]
 
+    score_dict = distill_score(filename)
+
     # todo: add another dictionary for start/end nodes
     # prints the contents of the previously created arraylist of dictionaries
     for i in range(len(node_ids)):
-        dictlist_nodes[i] = {'id':node_ids[i], 'ip':ip_val[i], 'score':rand_scores()}
+        dictlist_nodes[i] = {'id':node_ids[i], 'ip':ip_val[i], 'score':match_ip(ip_val[i], score_dict)}
 
     for i in range(len(edge_ids)):
         dictlist_edges[i] = {'id':edge_ids[i], 'source':source[i], 'target':target[i]}
 
     print(json.dumps(nx.readwrite.node_link_data(create_graph(dictlist_nodes, dictlist_edges)), indent=4))
-    print(create_graph(dictlist_nodes, dictlist_edges))
