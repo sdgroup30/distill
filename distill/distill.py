@@ -6,12 +6,14 @@ import random
 import trivium
 import networkx as nx
 import xml.etree.ElementTree as ET
+import random
 from pathlib import Path
 
 # returns a random value between 1-10 (not true random)
 def rand_scores():
     return random.randint(1,10)
 
+# converts csv file into a json file for easier parsing
 def csv_to_json(csvFilePath, jsonFilePath):
         jsonArray = []
         labels = ['IP Address', 'Risk Factor', 'Severity', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
@@ -33,6 +35,7 @@ def csv_to_json(csvFilePath, jsonFilePath):
             jsonString = json.dumps(jsonArray, indent=4)
             jsonf.write(jsonString)    
 
+# helper function to create distill scores
 def add_scores(jsonFilePath):
         distill_scores = {}
         score = 0
@@ -60,8 +63,7 @@ def add_scores(jsonFilePath):
 def get_nodes(model_name, diagram_name):
     # set allowed types
     #todo: why does this break properties? -> no field -> separate dictlist for start/end
-    ALLOWED_NODE_TYPES = ['td.cyber.node'] #, 'td.cyber.database', 'td.systems.actor']
-    # ALLOWED_EDGE_TYPES = ['td.edge']
+    ALLOWED_NODE_TYPES = ['td.cyber.node']
 
     # set params
     params = {
@@ -75,8 +77,9 @@ def get_nodes(model_name, diagram_name):
     nodes = [e for e in elements if e['type'] in ALLOWED_NODE_TYPES]
     return nodes
 
+# helper function to retrieve a list of edges
 def get_edges(model_name, diagram_name):
-    ALLOWED_NODE_TYPES = ['td.cyber.node'] #, 'td.cyber.database', 'td.systems.actor']
+    ALLOWED_NODE_TYPES = ['td.cyber.node']
     ALLOWED_EDGE_TYPES = ['td.edge']
 
     # set params
@@ -93,7 +96,7 @@ def get_edges(model_name, diagram_name):
     edges = [e for e in elements if e['type'] in ALLOWED_EDGE_TYPES and e['source'] in node_ids and e['target'] in node_ids]
     return edges
 
-# Output networkX graph object with properties of IP and distill_score / 
+# Output networkX graph object with properties of IP and distill_score
 def create_graph(nodelist, edgelist):
     G = nx.Graph()
 
@@ -104,7 +107,8 @@ def create_graph(nodelist, edgelist):
         G.add_edge(edgelist[i]['source'], edgelist[i]['target'], id=edgelist[i]['id'])
     
     return G
-    
+
+# Parses through nessus reports and returns the calculated distill score
 def distill_score(filename):
     score_dict = {}
     tree = ET.parse(filename)
@@ -135,14 +139,57 @@ def distill_score(filename):
     csvFilePath = r'report.csv'
     jsonFilePath = r'report.json'
     csv_to_json(csvFilePath, jsonFilePath)
-
+    
     score_dict = add_scores(jsonFilePath)
     return score_dict
 
+# Ensures Distill Scores are matched with the correct IP address
 def match_ip(ip_val, distill_scores):
     for key in distill_scores.keys():
         if ip_val == key:
             return distill_scores[key]
+
+# Updates the Trivium Model with the Distill Scores
+def update_model(model, diagram, ip_val, score_dict):
+    ALLOWED_NODE_TYPES = ['td.cyber.node']
+
+    # This tells us whats in the diagram.
+    diagrams = trivium.api.element.get(model, element=diagram)
+    ids = list(diagrams["custom"]["diagramContents"].keys())
+    params = {'ids' : ','.join(ids), 'fields': 'id,name,type,source,target,custom'}
+    # This grabs the nodes from the diagram.
+    elements = trivium.api.element.get(model, params=params)
+    nodes = [e for e in elements if e['type'] in ALLOWED_NODE_TYPES]
+
+    for node in nodes:
+        ip = node['custom']['properties']['ip']['value']
+        for i in range(len(ip_val)):
+            if ip == ip_val[i]:
+                score = match_ip(ip_val[i], score_dict)
+                node['custom']['properties']['score'] = {'type':'string', 'value': str(score), 'units':''}
+
+    trivium.api.element.patch(model, nodes)
+
+# Generate a markdown file
+def markdown(fileName, node_ids, edge_ids, dictlist_nodes, dictlist_edges):
+    f = open(fileName + ".md", "w")
+    f.write("# Node Data Report\n")
+
+    for i in range(len(node_ids)):
+        f.write("### NodeID: " + dictlist_nodes[i]["id"] + "\n")
+        f.write("### NodeIP: " + dictlist_nodes[i]["ip"] + "\n")
+        f.write("### Distill Score: " + dictlist_nodes[i]["score"] + "\n")
+        f.write("---\n")
+    
+    f.write("---")
+    f.write("\n# Edge Data Report\n")
+
+    for j in range(len(edge_ids)):   
+        f.write("### EdgeID: " + dictlist_edges[j]["id"] + "\n")
+        f.write("### Source: " + dictlist_edges[j]["source"] + "\n")
+        f.write("### Target: " + dictlist_edges[j]["target"] + "\n")
+        f.write("---\n")
+    f.close()
 
 def main():
     # initialize parser
@@ -170,7 +217,6 @@ def main():
 
     # parses through trivium and pulls the node/IP Address from properties.
     custom = [ e['custom'] for e in nodes]
-    # print(json.dumps(custom, indent=4))
     prop = [ e['properties'] for e in custom]
     ip = [ e['ip'] for e in prop]
     ip_val = [ e['value'] for e in ip]
@@ -187,6 +233,7 @@ def main():
 
     # todo: add another dictionary for start/end nodes
     # prints the contents of the previously created arraylist of dictionaries
+    # ip_val stored as a string
     for i in range(len(node_ids)):
         dictlist_nodes[i] = {'id':node_ids[i], 'ip':ip_val[i], 'score':match_ip(ip_val[i], score_dict)}
 
@@ -194,3 +241,9 @@ def main():
         dictlist_edges[i] = {'id':edge_ids[i], 'source':source[i], 'target':target[i]}
 
     print(json.dumps(nx.readwrite.node_link_data(create_graph(dictlist_nodes, dictlist_edges)), indent=4))
+
+    update_model(model, diagram, ip_val, score_dict)
+
+    markdown("report", node_ids, edge_ids, dictlist_nodes, dictlist_edges)
+    
+            
