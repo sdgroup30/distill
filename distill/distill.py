@@ -14,7 +14,7 @@ def rand_scores():
 
 def csv_to_json(csvFilePath, jsonFilePath):
         jsonArray = []
-        labels = ['IP Address', 'Risk Factor', 'Severity', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
+        labels = ['IP Address', 'Risk Factor', 'Severity', 'Base Score', 'Temporal Score', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
 
         # read csv file
         with open(csvFilePath, encoding='utf-8') as csvf:
@@ -36,6 +36,13 @@ def csv_to_json(csvFilePath, jsonFilePath):
 def add_scores(jsonFilePath):
         distill_scores = {}
         score = 0
+        base_score = 0
+        temp_score = 0
+        avg_base_score = 0
+        avg_temp_score = 0
+        base_count = 0
+        temp_count = 0
+
         # Opens the json file "report.json"
         with open(jsonFilePath, "r") as f:
             data = json.load(f)
@@ -48,9 +55,22 @@ def add_scores(jsonFilePath):
         for key in distill_scores.keys():
             for sev in range(len(data)):
                 if data[sev].get('IP Address') == key:
-                    score = int(data[sev].get('Severity')) + score
                     
-            score = score / 1000
+                    # Cutoff threshold at Severity scores of Medium or more.
+                    if int(data[sev].get('Severity')) >= 2:
+                        base_score = float(data[sev].get('Base Score')) + base_score 
+                        temp_score = float(data[sev].get('Temporal Score')) + temp_score 
+                    
+                        if float(data[sev].get('Base Score')) != 0:
+                            base_count = base_count + 1
+                    
+                        if float(data[sev].get('Temporal Score')) != 0:
+                            temp_count = temp_count + 1
+
+            avg_base_score = base_score / base_count
+            avg_temp_score = temp_score / temp_count
+            score = round((avg_base_score + avg_temp_score) / 100, 4)
+
             distill_scores.update({key:str(score)})
             score = 0
         
@@ -115,16 +135,28 @@ def distill_score(filename):
 
             for item in host.findall('ReportItem'):
                 risk_factor = item.find('risk_factor').text
-                severity = item.get('severity')
                 pluginID = item.get('pluginID')
                 pluginName = item.get('pluginName')
                 port = item.get('port')
                 protocol = item.get('protocol')
+                severity = item.get('severity')
 
+                if(type(item.find('cvss_base_score')) == type(None)):
+                    base_score = '0' # this is informational
+                else:
+                    base_score = item.find('cvss_base_score').text
+
+                if(type(item.find('cvss_temporal_score')) == type(None)):
+                    temp_score = '0' # this is informational
+                else:
+                    temp_score = item.find('cvss_temporal_score').text
+                
                 report_file.write(
                 ipaddr + ',' + \
                 risk_factor + ',' + \
                 severity + ',' + \
+                base_score + ',' + \
+                temp_score + ',' + \
                 port + ',' + \
                 protocol + ',' + \
                 pluginID + ',' + \
