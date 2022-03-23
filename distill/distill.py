@@ -6,6 +6,8 @@ import random
 import trivium
 import networkx as nx
 import xml.etree.ElementTree as ET
+import subprocess
+import os
 from pathlib import Path
 
 # returns a random value between 1-10 (not true random)
@@ -176,6 +178,11 @@ def match_ip(ip_val, distill_scores):
         if ip_val == key:
             return distill_scores[key]
 
+#                                  TO DO 
+# ------------------------------------------------------------------------
+# Add Threshold data, how long program took to run.
+# Add CVE data pertaining only to CRITICAL severity scores from each node.
+
 # Updates the Trivium Model with the Distill Scores
 def update_model(model, diagram, ip_val, score_dict):
     ALLOWED_NODE_TYPES = ['td.cyber.node']
@@ -197,8 +204,9 @@ def update_model(model, diagram, ip_val, score_dict):
 
     trivium.api.element.patch(model, nodes)
 
-# Generate a markdown file
-def markdown(fileName, node_ids, edge_ids, dictlist_nodes, dictlist_edges):
+# Generate a markdown and pdf file
+def file_generator(fileName, node_ids, edge_ids, dictlist_nodes, dictlist_edges):
+    
     f = open(fileName + ".md", "w")
     f.write("# Node Data Report\n")
 
@@ -208,15 +216,15 @@ def markdown(fileName, node_ids, edge_ids, dictlist_nodes, dictlist_edges):
         f.write("### Distill Score: " + dictlist_nodes[i]["score"] + "\n")
         f.write("---\n")
     
-    f.write("---")
-    f.write("\n# Edge Data Report\n")
-
-    for j in range(len(edge_ids)):   
-        f.write("### EdgeID: " + dictlist_edges[j]["id"] + "\n")
-        f.write("### Source: " + dictlist_edges[j]["source"] + "\n")
-        f.write("### Target: " + dictlist_edges[j]["target"] + "\n")
-        f.write("---\n")
     f.close()
+
+    markdown = r'report.md'
+
+    fileout = os.path.splitext(markdown)[0] + ".pdf"
+    args = ['pandoc', markdown, '-o', fileout]
+    subprocess.Popen(args)
+    
+
 
 def main():
     # initialize parser
@@ -272,4 +280,4 @@ def main():
 
     update_model(model, diagram, ip_val, score_dict)
 
-    markdown("report", node_ids, edge_ids, dictlist_nodes, dictlist_edges)
+    file_generator("report", node_ids, edge_ids, dictlist_nodes, dictlist_edges)
