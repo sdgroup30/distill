@@ -10,13 +10,10 @@ import subprocess
 import os
 from pathlib import Path
 
-# returns a random value between 1-10 (not true random)
-def rand_scores():
-    return random.randint(1,10)
 
 def csv_to_json(csvFilePath, jsonFilePath):
         jsonArray = []
-        labels = ['IP Address', 'Risk Factor', 'Severity', 'Base Score', 'Temporal Score', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
+        labels = ['IP Address', 'Risk Factor', 'Severity', 'CVE', 'Base Score', 'Temporal Score', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
 
         # read csv file
         with open(csvFilePath, encoding='utf-8') as csvf:
@@ -34,49 +31,6 @@ def csv_to_json(csvFilePath, jsonFilePath):
         with open(jsonFilePath, 'w', encoding='utf-8') as jsonf:
             jsonString = json.dumps(jsonArray, indent=4)
             jsonf.write(jsonString)    
-
-def add_scores(jsonFilePath):
-        distill_scores = {}
-        score = 0
-        base_score = 0
-        temp_score = 0
-        avg_base_score = 0
-        avg_temp_score = 0
-        base_count = 0
-        temp_count = 0
-
-        # Opens the json file "report.json"
-        with open(jsonFilePath, "r") as f:
-            data = json.load(f)
-        
-        # Grabs the IP Address of the machines and creates the dictionary.
-        for ip in range(len(data)):
-            distill_scores.update({data[ip].get('IP Address'): '0'})
-
-        # Updates the appropiate value of each dictionary key with Distill Scores.
-        for key in distill_scores.keys():
-            for sev in range(len(data)):
-                if data[sev].get('IP Address') == key:
-                    
-                    # Cutoff threshold at Severity scores of Medium or more.
-                    if int(data[sev].get('Severity')) >= 2:
-                        base_score = float(data[sev].get('Base Score')) + base_score 
-                        temp_score = float(data[sev].get('Temporal Score')) + temp_score 
-                    
-                        if float(data[sev].get('Base Score')) != 0:
-                            base_count = base_count + 1
-                    
-                        if float(data[sev].get('Temporal Score')) != 0:
-                            temp_count = temp_count + 1
-
-            avg_base_score = base_score / base_count
-            avg_temp_score = temp_score / temp_count
-            score = round((avg_base_score + avg_temp_score) / 100, 4)
-
-            distill_scores.update({key:str(score)})
-            score = 0
-        
-        return distill_scores
     
 # helper function to retrieve a list of nodes
 def get_nodes(model_name, diagram_name):
@@ -117,6 +71,7 @@ def get_edges(model_name, diagram_name):
 
 # Output networkX graph object with properties of IP and distill_score / 
 def create_graph(nodelist, edgelist):
+
     G = nx.Graph()
 
     for i in range(len(nodelist)):
@@ -126,7 +81,50 @@ def create_graph(nodelist, edgelist):
         G.add_edge(edgelist[i]['source'], edgelist[i]['target'], id=edgelist[i]['id'])
     
     return G
+
+def add_scores(jsonFilePath):
+    distill_scores = {}
+    score = 0
+    base_score = 0
+    temp_score = 0
+    avg_base_score = 0
+    avg_temp_score = 0
+    base_count = 0
+    temp_count = 0
+
+    # Opens the json file "report.json"
+    with open(jsonFilePath, "r") as f:
+        data = json.load(f)
     
+    # Grabs the IP Address of the machines and creates the dictionary.
+    for ip in range(len(data)):
+        distill_scores.update({data[ip].get('IP Address'): '0'})
+
+    # Updates the appropiate value of each dictionary key with Distill Scores.
+    for key in distill_scores.keys():
+        for sev in range(len(data)):
+            if data[sev].get('IP Address') == key:
+                
+                # Cutoff threshold at Severity scores of Medium or more.
+                if int(data[sev].get('Severity')) >= 2:
+                    base_score = float(data[sev].get('Base Score')) + base_score 
+                    temp_score = float(data[sev].get('Temporal Score')) + temp_score 
+                
+                    if float(data[sev].get('Base Score')) != 0:
+                        base_count = base_count + 1
+                
+                    if float(data[sev].get('Temporal Score')) != 0:
+                        temp_count = temp_count + 1
+
+        avg_base_score = base_score / base_count
+        avg_temp_score = temp_score / temp_count
+        score = round((avg_base_score + avg_temp_score) / 100, 4)
+
+        distill_scores.update({key:str(score)})
+        score = 0
+    
+    return distill_scores
+
 def distill_score(filename):
     score_dict = {}
     tree = ET.parse(filename)
@@ -153,10 +151,16 @@ def distill_score(filename):
                 else:
                     temp_score = item.find('cvss_temporal_score').text
                 
+                if(type(item.find('cve')) == type(None)):
+                    cve = ' ' # this is informational
+                else:
+                    cve = item.find('cve').text
+
                 report_file.write(
                 ipaddr + ',' + \
                 risk_factor + ',' + \
                 severity + ',' + \
+                cve + ',' + \
                 base_score + ',' + \
                 temp_score + ',' + \
                 port + ',' + \
@@ -177,11 +181,6 @@ def match_ip(ip_val, distill_scores):
     for key in distill_scores.keys():
         if ip_val == key:
             return distill_scores[key]
-
-#                                  TO DO 
-# ------------------------------------------------------------------------
-# Add Threshold data, how long program took to run.
-# Add CVE data pertaining only to CRITICAL severity scores from each node.
 
 # Updates the Trivium Model with the Distill Scores
 def update_model(model, diagram, ip_val, score_dict):
@@ -205,16 +204,17 @@ def update_model(model, diagram, ip_val, score_dict):
     trivium.api.element.patch(model, nodes)
 
 # Generate a markdown and pdf file
-def file_generator(fileName, node_ids, edge_ids, dictlist_nodes, dictlist_edges):
+def file_generator(fileName, node_ids, dictlist_nodes):
     
     f = open(fileName + ".md", "w")
-    f.write("# Node Data Report\n")
+    f.write("#\t NODE DATA REPORT\n\n")
 
     for i in range(len(node_ids)):
-        f.write("### NodeID: " + dictlist_nodes[i]["id"] + "\n")
-        f.write("### NodeIP: " + dictlist_nodes[i]["ip"] + "\n")
-        f.write("### Distill Score: " + dictlist_nodes[i]["score"] + "\n")
-        f.write("---\n")
+        f.write("")
+        f.write("NodeIP: " + dictlist_nodes[i]["ip"] + "  \n")
+        f.write("NodeID: " + dictlist_nodes[i]["id"] + "  \n")
+        f.write("**Distill Score:** " + dictlist_nodes[i]["score"] + "  \n")
+        f.write('\n')
     
     f.close()
 
@@ -224,8 +224,6 @@ def file_generator(fileName, node_ids, edge_ids, dictlist_nodes, dictlist_edges)
     args = ['pandoc', markdown, '-o', fileout]
     subprocess.Popen(args)
     
-
-
 def main():
     # initialize parser
     parser = argparse.ArgumentParser()
@@ -280,4 +278,4 @@ def main():
 
     update_model(model, diagram, ip_val, score_dict)
 
-    file_generator("report", node_ids, edge_ids, dictlist_nodes, dictlist_edges)
+    file_generator("report", node_ids, dictlist_nodes)
