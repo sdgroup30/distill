@@ -75,7 +75,7 @@ def create_graph(nodelist, edgelist):
     G = nx.Graph()
 
     for i in range(len(nodelist)):
-        G.add_node(nodelist[i]['id'], ip=nodelist[i]['ip'], distill_score=nodelist[i]['score'])
+        G.add_node(nodelist[i]['id'], ip=nodelist[i]['ip'], distill_score=nodelist[i]['score'], cve_info=nodelist[i]['cve'])
 
     for i in range(len(edgelist)):
         G.add_edge(edgelist[i]['source'], edgelist[i]['target'], id=edgelist[i]['id'])
@@ -83,7 +83,7 @@ def create_graph(nodelist, edgelist):
     return G
 
 def add_scores(jsonFilePath):
-    distill_scores = {}
+    distill_info = {}
     score = 0
     base_score = 0
     temp_score = 0
@@ -98,10 +98,10 @@ def add_scores(jsonFilePath):
     
     # Grabs the IP Address of the machines and creates the dictionary.
     for ip in range(len(data)):
-        distill_scores.update({data[ip].get('IP Address'): '0'})
+        distill_info.update({data[ip].get('IP Address'): '0'})
 
     # Updates the appropiate value of each dictionary key with Distill Scores.
-    for key in distill_scores.keys():
+    for key in distill_info.keys():
         for sev in range(len(data)):
             if data[sev].get('IP Address') == key:
                 
@@ -120,10 +120,10 @@ def add_scores(jsonFilePath):
         avg_temp_score = temp_score / temp_count
         score = round((avg_base_score + avg_temp_score) / 100, 4)
 
-        distill_scores.update({key:str(score)})
+        distill_info.update({key:str(score)})
         score = 0
-    
-    return distill_scores
+
+    return distill_info
 
 def distill_score(filename):
     score_dict = {}
@@ -177,10 +177,40 @@ def distill_score(filename):
     score_dict = add_scores(jsonFilePath)
     return score_dict
 
-def match_ip(ip_val, distill_scores):
-    for key in distill_scores.keys():
+def capture_cve(filename):
+    cve_dict = {}
+    cve_list = []
+
+    # Opens the json file "report.json"
+    with open(filename, "r") as f:
+        data = json.load(f)
+    
+    # Grabs the IP Address of the machines and creates the dictionary.
+    for ip in range(len(data)):
+        cve_dict.update({data[ip].get('IP Address'): []})
+
+    for key in cve_dict.keys():
+        for sev in range(len(data)):
+            if data[sev].get('IP Address') == key:
+                if int(data[sev].get('Severity')) >= 2 and data[sev].get('CVE') != ' ':
+                    cve_list.append(data[sev].get('CVE'))
+
+        cve_dict.update({key:cve_list})
+        cve_list = []
+    
+    return cve_dict
+
+def cve():
+    cve_dict = {}
+    jsonFilePath = r'report.json'
+    cve_dict = capture_cve(jsonFilePath)
+    return cve_dict
+
+
+def match_ip(ip_val, distill_info):
+    for key in distill_info.keys():
         if ip_val == key:
-            return distill_scores[key]
+            return distill_info[key]
 
 # Updates the Trivium Model with the Distill Scores
 def update_model(model, diagram, ip_val, score_dict):
@@ -263,13 +293,14 @@ def main():
     dictlist_nodes = [dict() for x in range(len(node_ids))]
     dictlist_edges = [dict() for x in range(len(edge_ids))]
 
+    # dictionaries that store distill scores and cve data.
     score_dict = distill_score(filename)
+    cve_dict = cve()
 
-    # todo: add another dictionary for start/end nodes
     # prints the contents of the previously created arraylist of dictionaries
     # ip_val stored as a string
     for i in range(len(node_ids)):
-        dictlist_nodes[i] = {'id':node_ids[i], 'ip':ip_val[i], 'score':match_ip(ip_val[i], score_dict)}
+        dictlist_nodes[i] = {'id':node_ids[i], 'ip':ip_val[i], 'score':match_ip(ip_val[i], score_dict), 'cve':match_ip(ip_val[i], cve_dict)}
 
     for i in range(len(edge_ids)):
         dictlist_edges[i] = {'id':edge_ids[i], 'source':source[i], 'target':target[i]}
