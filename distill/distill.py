@@ -6,15 +6,14 @@ import random
 import trivium
 import networkx as nx
 import xml.etree.ElementTree as ET
+import subprocess
+import os
 from pathlib import Path
 
-# returns a random value between 1-10 (not true random)
-def rand_scores():
-    return random.randint(1,10)
-
+# Library to translate Nessus scans into readable JSON formatting
 def csv_to_json(csvFilePath, jsonFilePath):
         jsonArray = []
-        labels = ['IP Address', 'Risk Factor', 'Severity', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
+        labels = ['IP Address', 'Risk Factor', 'Severity', 'CVE', 'Base Score', 'Temporal Score', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
 
         # read csv file
         with open(csvFilePath, encoding='utf-8') as csvf:
@@ -32,29 +31,6 @@ def csv_to_json(csvFilePath, jsonFilePath):
         with open(jsonFilePath, 'w', encoding='utf-8') as jsonf:
             jsonString = json.dumps(jsonArray, indent=4)
             jsonf.write(jsonString)    
-
-def add_scores(jsonFilePath):
-        distill_scores = {}
-        score = 0
-        # Opens the json file "report.json"
-        with open(jsonFilePath, "r") as f:
-            data = json.load(f)
-        
-        # Grabs the IP Address of the machines and creates the dictionary.
-        for ip in range(len(data)):
-            distill_scores.update({data[ip].get('IP Address'): '0'})
-
-        # Updates the appropiate value of each dictionary key with Distill Scores.
-        for key in distill_scores.keys():
-            for sev in range(len(data)):
-                if data[sev].get('IP Address') == key:
-                    score = int(data[sev].get('Severity')) + score
-                    
-            score = score / 1000
-            distill_scores.update({key:str(score)})
-            score = 0
-        
-        return distill_scores
     
 # helper function to retrieve a list of nodes
 def get_nodes(model_name, diagram_name):
@@ -75,6 +51,7 @@ def get_nodes(model_name, diagram_name):
     nodes = [e for e in elements if e['type'] in ALLOWED_NODE_TYPES]
     return nodes
 
+# Grabs the edges from a user's Trivium diagram
 def get_edges(model_name, diagram_name):
     ALLOWED_NODE_TYPES = ['td.cyber.node'] #, 'td.cyber.database', 'td.systems.actor']
     ALLOWED_EDGE_TYPES = ['td.edge']
@@ -95,16 +72,60 @@ def get_edges(model_name, diagram_name):
 
 # Output networkX graph object with properties of IP and distill_score / 
 def create_graph(nodelist, edgelist):
+
     G = nx.Graph()
 
     for i in range(len(nodelist)):
-        G.add_node(nodelist[i]['id'], ip=nodelist[i]['ip'], distill_score=nodelist[i]['score'])
+        G.add_node(nodelist[i]['id'], ip=nodelist[i]['ip'], distill_score=nodelist[i]['score'], cve_info=nodelist[i]['cve'])
 
     for i in range(len(edgelist)):
         G.add_edge(edgelist[i]['source'], edgelist[i]['target'], id=edgelist[i]['id'])
     
     return G
+
+def add_scores(jsonFilePath):
+    distill_info = {}
+    score = 0
+    base_score = 0
+    temp_score = 0
+    avg_base_score = 0
+    avg_temp_score = 0
+    base_count = 0
+    temp_count = 0
+
+    # Opens the json file "report.json"
+    with open(jsonFilePath, "r") as f:
+        data = json.load(f)
     
+    # Grabs the IP Address of the machines and creates the dictionary.
+    for ip in range(len(data)):
+        distill_info.update({data[ip].get('IP Address'): '0'})
+
+    # Updates the appropiate value of each dictionary key with Distill Scores.
+    for key in distill_info.keys():
+        for sev in range(len(data)):
+            if data[sev].get('IP Address') == key:
+                
+                # Cutoff threshold at Severity scores of Medium or more.
+                if int(data[sev].get('Severity')) >= 2:
+                    base_score = float(data[sev].get('Base Score')) + base_score 
+                    temp_score = float(data[sev].get('Temporal Score')) + temp_score 
+                
+                    if float(data[sev].get('Base Score')) != 0 and float(data[sev].get('Base Score')) != None:
+                        base_count = base_count + 1
+                
+                    if float(data[sev].get('Temporal Score')) != 0 and float(data[sev].get('Temporal Score')) != None:
+                        temp_count = temp_count + 1
+
+        avg_base_score = base_score / base_count
+        avg_temp_score = temp_score / temp_count
+        score = round((avg_base_score + avg_temp_score) / 100, 4)
+
+        distill_info.update({key:str(score)})
+        score = 0
+
+    return distill_info
+
 def distill_score(filename):
     score_dict = {}
     tree = ET.parse(filename)
@@ -115,35 +136,131 @@ def distill_score(filename):
 
             for item in host.findall('ReportItem'):
                 risk_factor = item.find('risk_factor').text
-                severity = item.get('severity')
                 pluginID = item.get('pluginID')
                 pluginName = item.get('pluginName')
                 port = item.get('port')
                 protocol = item.get('protocol')
+                severity = item.get('severity')
+
+                if(type(item.find('cvss_base_score')) == type(None)):
+                    base_score = '0' # this is informational
+                else:
+                    base_score = item.find('cvss_base_score').text
+
+                if(type(item.find('cvss_temporal_score')) == type(None)):
+                    temp_score = '0' # this is informational
+                else:
+                    temp_score = item.find('cvss_temporal_score').text
+                
+                if(type(item.find('cve')) == type(None)):
+                    cve = ' ' # this is informational
+                else:
+                    cve = item.find('cve').text
 
                 report_file.write(
                 ipaddr + ',' + \
                 risk_factor + ',' + \
                 severity + ',' + \
+                cve + ',' + \
+                base_score + ',' + \
+                temp_score + ',' + \
                 port + ',' + \
                 protocol + ',' + \
                 pluginID + ',' + \
                 '"' + pluginName + '"' + '\n'
                 )
 
-
+    
+    # Set filepaths
     csvFilePath = r'report.csv'
     jsonFilePath = r'report.json'
     csv_to_json(csvFilePath, jsonFilePath)
 
+    # Add values to the score dictionary
     score_dict = add_scores(jsonFilePath)
     return score_dict
 
-def match_ip(ip_val, distill_scores):
-    for key in distill_scores.keys():
-        if ip_val == key:
-            return distill_scores[key]
+# Helper function to acquire CVE information
+def capture_cve(filename):
+    cve_dict = {}
+    cve_list = []
 
+    # Opens the json file "report.json"
+    with open(filename, "r") as f:
+        data = json.load(f)
+    
+    # Grabs the IP Address of the machines and creates the dictionary.
+    for ip in range(len(data)):
+        cve_dict.update({data[ip].get('IP Address'): []})
+
+    for key in cve_dict.keys():
+        for sev in range(len(data)):
+            if data[sev].get('IP Address') == key:
+                if int(data[sev].get('Severity')) >= 2 and data[sev].get('CVE') != ' ':
+                    cve_list.append(data[sev].get('CVE'))
+
+        cve_dict.update({key:cve_list})
+        cve_list = []
+    
+    return cve_dict
+
+def cve():
+    cve_dict = {}
+    jsonFilePath = r'report.json'
+    cve_dict = capture_cve(jsonFilePath)
+    return cve_dict
+
+# Match the IP addresses between Nessus and Trivium
+def match_ip(ip_val, distill_info):
+    for key in distill_info.keys():
+        if ip_val == key:
+            return distill_info[key]
+
+# Updates the Trivium Model with the Distill Scores
+def update_model(model, diagram, ip_val, score_dict):
+    ALLOWED_NODE_TYPES = ['td.cyber.node']
+
+    # This tells us whats in the diagram.
+    diagrams = trivium.api.element.get(model, element=diagram)
+    ids = list(diagrams["custom"]["diagramContents"].keys())
+    params = {'ids' : ','.join(ids), 'fields': 'id,name,type,source,target,custom'}
+    # This grabs the nodes from the diagram.
+    elements = trivium.api.element.get(model, params=params)
+    nodes = [e for e in elements if e['type'] in ALLOWED_NODE_TYPES]
+
+    for node in nodes:
+        ip = node['custom']['properties']['ip']['value']
+        for i in range(len(ip_val)):
+            if ip == ip_val[i]:
+                score = match_ip(ip_val[i], score_dict)
+                node['custom']['properties']['score'] = {'type':'string', 'value': str(score), 'units':''}
+
+    trivium.api.element.patch(model, nodes)
+
+# Generate a markdown and pdf file
+def file_generator(fileName, node_ids, dictlist_nodes):
+    
+    f = open(fileName + ".md", "w")
+    f.write("#\t NODE DATA REPORT\n\n")
+
+    for i in range(len(node_ids)):
+        f.write("")
+        f.write("NodeIP: " + dictlist_nodes[i]["ip"] + "  \n")
+        f.write("NodeID: " + dictlist_nodes[i]["id"] + "  \n")
+        if type(dictlist_nodes[i]["score"]) != None: 
+            f.write("**Distill Score:** " + str(dictlist_nodes[i]["score"]) + "  \n")
+        else:
+            f.write("**Distill Score:** " + 'none' + "  \n")
+        f.write('\n')
+    
+    f.close()
+
+    markdown = r'report.md'
+
+    fileout = os.path.splitext(markdown)[0] + ".pdf"
+    args = ['pandoc', markdown, '-o', fileout]
+    subprocess.Popen(args)
+    
 def main():
     # initialize parser
     parser = argparse.ArgumentParser()
@@ -183,14 +300,23 @@ def main():
     dictlist_nodes = [dict() for x in range(len(node_ids))]
     dictlist_edges = [dict() for x in range(len(edge_ids))]
 
+    # dictionaries that store distill scores and cve data.
     score_dict = distill_score(filename)
+    cve_dict = cve()
 
-    # todo: add another dictionary for start/end nodes
     # prints the contents of the previously created arraylist of dictionaries
+    # ip_val stored as a string
     for i in range(len(node_ids)):
-        dictlist_nodes[i] = {'id':node_ids[i], 'ip':ip_val[i], 'score':match_ip(ip_val[i], score_dict)}
+        dictlist_nodes[i] = {'id':node_ids[i], 'ip':ip_val[i], 'score':match_ip(ip_val[i], score_dict), 'cve':match_ip(ip_val[i], cve_dict)}
 
     for i in range(len(edge_ids)):
         dictlist_edges[i] = {'id':edge_ids[i], 'source':source[i], 'target':target[i]}
 
+    # console output
     print(json.dumps(nx.readwrite.node_link_data(create_graph(dictlist_nodes, dictlist_edges)), indent=4))
+
+    # Trivium call
+    update_model(model, diagram, ip_val, score_dict)
+
+    # JSON, Markdown, PDF output
+    file_generator("report", node_ids, dictlist_nodes)
