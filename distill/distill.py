@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import subprocess
 import os
 from pathlib import Path
+# import pandoc
 
 
 def csv_to_json(csvFilePath, jsonFilePath):
@@ -243,7 +244,10 @@ def file_generator(fileName, node_ids, dictlist_nodes):
         f.write("")
         f.write("NodeIP: " + dictlist_nodes[i]["ip"] + "  \n")
         f.write("NodeID: " + dictlist_nodes[i]["id"] + "  \n")
-        f.write("**Distill Score:** " + dictlist_nodes[i]["score"] + "  \n")
+        if type(dictlist_nodes[i]["score"]) != None: 
+            f.write("**Distill Score:** " + str(dictlist_nodes[i]["score"]) + "  \n")
+        else:
+            f.write("**Distill Score:** " + 'none' + "  \n")
         f.write('\n')
     
     f.close()
