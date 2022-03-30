@@ -9,7 +9,6 @@ import xml.etree.ElementTree as ET
 import subprocess
 import os
 from pathlib import Path
-# import pandoc
 
 
 def csv_to_json(csvFilePath, jsonFilePath):
