@@ -241,37 +241,40 @@ def update_model(model, diagram, ip_val, score_dict):
 
     trivium.api.element.patch(model, nodes)
 
-# Generate a markdown and pdf file
+# Generate a markdown and pdf file.
 def file_generator(fileName, node_ids, dictlist_nodes):
     
     cve_amount = 0
 
+     # Writes markdown file.
     f = open(fileName + ".md", "w")
     f.write("#\t NODE DATA REPORT\n\n")
-
+    
     for i in range(len(node_ids)):
         f.write("")
         f.write("NodeIP: " + dictlist_nodes[i]["ip"] + "  \n")
         f.write("NodeID: " + dictlist_nodes[i]["id"] + "  \n")
         f.write("**Distill Score:** " + dictlist_nodes[i]["score"] + "  \n")
-        f.write("[Go to this Node's Vulnerability Report](#CVE-REPORT-FOR-"+dictlist_nodes[i]["ip"]+")" + "  \n")
+        f.write("[Go to this Node's Vulnerability Report](#cve-report-for-"+str(dictlist_nodes[i]["ip"])+")" + "  \n")
         f.write('\n')
     
     for i in range(len(node_ids)):
         f.write("")
-        f.write("# CVE REPORT FOR " + dictlist_nodes[i]["ip"])
+        f.write("# CVE REPORT FOR " + str(dictlist_nodes[i]["ip"]))
         f.write("\n\n")
-        f.write("[RETURN TO TOP](#NODE-DATA-REPORT)")
+        f.write("[RETURN TO TOP](#node-data-report)")
         f.write('\n\n')
         cve_amount = len(dictlist_nodes[i]["cve"])
         f.write("**Number of Vulnerabilities in Node:** " + str(cve_amount) + "  \n\n")
         
+        # Adds CVE data to markdown report.
         for cve in range(cve_amount):
             cve_name = str(dictlist_nodes[i]["cve"][cve])
             f.write("["+cve_name+"](https://cve.mitre.org/cgi-bin/cvename.cgi?name="+cve_name+") \n\n")
 
     f.close()
 
+    # Converts markdown report to PDF using pandoc.
     markdown = r'report.md'
 
     fileout = os.path.splitext(markdown)[0] + ".pdf"
