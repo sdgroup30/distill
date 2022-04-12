@@ -242,13 +242,17 @@ def update_model(model, diagram, ip_val, score_dict):
     trivium.api.element.patch(model, nodes)
 
 # Generate a markdown and pdf file.
-def file_generator(fileName, node_ids, dictlist_nodes):
+def file_generator(name, node_ids, dictlist_nodes):
     
     cve_amount = 0
 
-     # Writes markdown file.
-    f = open(fileName + ".md", "w")
-    f.write("#\t NODE DATA REPORT\n\n")
+    # Writes markdown file.
+    if name:
+        f = open(name + ".md", "w")
+        f.write("#\t " + name.upper() + "'S NODE DATA REPORT\n\n")
+    else:
+        f = open("report.md", "w")
+        f.write("#\t NODE DATA REPORT\n\n")
     
     for i in range(len(node_ids)):
         f.write("")
@@ -275,7 +279,11 @@ def file_generator(fileName, node_ids, dictlist_nodes):
     f.close()
 
     # Converts markdown report to PDF using pandoc.
-    markdown = r'report.md'
+    markdown_name = name + ".md"
+    if name:
+        markdown = markdown_name
+    else:
+        markdown = r'report.md'
 
     fileout = os.path.splitext(markdown)[0] + ".pdf"
     args = ['pandoc', markdown, '-o', fileout]
@@ -293,12 +301,18 @@ def main():
     parser.add_argument("-m", "--model", type=str, help="Model Name", required=True)
     parser.add_argument("-d", "--diagram", type=str, help="Diagram Name", required=True)
     parser.add_argument("-n", "--nessus", type=argparse.FileType('r'), help="Nessus Files", required=True)
+    parser.add_argument("-o", "--optional", type=str, help="Optional Naming", required=False)
     args = parser.parse_args()
 
     # initialization from user's command-line input
     model = args.model
     diagram = args.diagram
     filename = args.nessus
+
+    if args.optional:
+        new_name = args.optional
+    else:
+        new_name = ''
 
     print("Retrieving Trivium Model...\n")
 
@@ -350,6 +364,6 @@ def main():
 
     print("Generating PDF Report...\n")
 
-    file_generator("report", node_ids, dictlist_nodes)
+    file_generator(new_name, node_ids, dictlist_nodes)
 
     print("DONE")
