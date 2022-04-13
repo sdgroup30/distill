@@ -2,15 +2,13 @@
 import argparse
 import csv
 import json
-import random
 import trivium
 import networkx as nx
 import xml.etree.ElementTree as ET
 import subprocess
 import os
-from pathlib import Path
 
-
+# Library to translate Nessus scans into readable JSON formatting
 def csv_to_json(csvFilePath, jsonFilePath):
         jsonArray = []
         labels = ['IP Address', 'Risk Factor', 'Severity', 'CVE', 'Base Score', 'Temporal Score', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
@@ -51,6 +49,7 @@ def get_nodes(model_name, diagram_name):
     nodes = [e for e in elements if e['type'] in ALLOWED_NODE_TYPES]
     return nodes
 
+# Grabs the edges from a user's Trivium diagram
 def get_edges(model_name, diagram_name):
     ALLOWED_NODE_TYPES = ['td.cyber.node'] #, 'td.cyber.database', 'td.systems.actor']
     ALLOWED_EDGE_TYPES = ['td.edge']
@@ -110,10 +109,10 @@ def add_scores(jsonFilePath):
                     base_score = float(data[sev].get('Base Score')) + base_score 
                     temp_score = float(data[sev].get('Temporal Score')) + temp_score 
                 
-                    if float(data[sev].get('Base Score')) != 0:
+                    if float(data[sev].get('Base Score')) != 0 and float(data[sev].get('Base Score')) != None:
                         base_count = base_count + 1
                 
-                    if float(data[sev].get('Temporal Score')) != 0:
+                    if float(data[sev].get('Temporal Score')) != 0 and float(data[sev].get('Temporal Score')) != None:
                         temp_count = temp_count + 1
 
         avg_base_score = base_score / base_count
@@ -169,12 +168,16 @@ def distill_score(filename):
                 '"' + pluginName + '"' + '\n'
                 )
 
-
+    
+    # Set filepaths
     csvFilePath = r'report.csv'
     jsonFilePath = r'report.json'
     csv_to_json(csvFilePath, jsonFilePath)
 
+
     print("Creating Distill Scores...\n")
+
+    # Add values to the score dictionary
     score_dict = add_scores(jsonFilePath)
 
     # deletes CSV file
@@ -182,6 +185,7 @@ def distill_score(filename):
 
     return score_dict
 
+# Helper function to acquire CVE information
 def capture_cve(filename):
     cve_dict = {}
     cve_list = []
@@ -205,7 +209,6 @@ def capture_cve(filename):
     
     # deletes JSON file
     os.remove(filename)
-
     return cve_dict
 
 def cve():
@@ -214,7 +217,7 @@ def cve():
     cve_dict = capture_cve(jsonFilePath)
     return cve_dict
 
-
+# Match the IP addresses between Nessus and Trivium
 def match_ip(ip_val, distill_info):
     for key in distill_info.keys():
         if ip_val == key:
