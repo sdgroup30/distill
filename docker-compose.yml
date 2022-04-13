@@ -1,6 +1,6 @@
 version: "2"
 services:
-  sublimate:
+  distill:
     build: .
     volumes:
       - .:/distill
