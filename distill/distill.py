@@ -249,7 +249,7 @@ def file_generator(name, node_ids, dictlist_nodes):
     # Writes markdown file.
     if name:
         f = open(name + ".md", "w")
-        f.write("#\t " + name.upper() + "'S NODE DATA REPORT\n\n")
+        f.write("#\t " + name.split("/")[-1].upper() + "'S NODE DATA REPORT\n\n")
     else:
         f = open("report.md", "w")
         f.write("#\t NODE DATA REPORT\n\n")
