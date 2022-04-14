@@ -370,3 +370,6 @@ def main():
     file_generator(new_name, node_ids, dictlist_nodes)
 
     print("DONE")
+    
+if __name__ == "__main__":
+    main()
