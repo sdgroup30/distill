@@ -21,22 +21,17 @@ COPY requirements.txt requirements.txt
 # Create the venv
 RUN python3 -m venv venv-distill
 
-RUN useradd -m temp
-USER temp
-
-ENV PATH="/venv-distill/bin:$PATH"
+ENV VIRTUAL_ENV=/venv-distill
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN apt-get update && \
     apt-get install -y git && \
-    pip3 install -r requirements.txt && \
-    pip3 install markdown && \
-    pip3 install md_mermaid && \
-    pip3 install matplotlib && \
-    pip3 install pdfkit && \
-    pip3 install pandoc && \
-    apt-get install -y pandoc
+    pip3 install -r requirements.txt
 
+RUN useradd -m temp
+USER temp
 
 
 # set sublimate.py as the entrypoint
-ENTRYPOINT ["python","./distill/distill.py"]
+ENTRYPOINT ["/venv-distill/bin/distill"]
