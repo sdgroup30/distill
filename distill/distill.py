@@ -2,13 +2,11 @@
 import argparse
 import csv
 import json
-import random
 import trivium
 import networkx as nx
 import xml.etree.ElementTree as ET
 import subprocess
 import os
-from pathlib import Path
 
 # Library to translate Nessus scans into readable JSON formatting
 def csv_to_json(csvFilePath, jsonFilePath):
@@ -176,8 +174,15 @@ def distill_score(filename):
     jsonFilePath = r'report.json'
     csv_to_json(csvFilePath, jsonFilePath)
 
+
+    print("Creating Distill Scores...\n")
+
     # Add values to the score dictionary
     score_dict = add_scores(jsonFilePath)
+
+    # deletes CSV file
+    os.remove(csvFilePath)
+
     return score_dict
 
 # Helper function to acquire CVE information
@@ -202,6 +207,8 @@ def capture_cve(filename):
         cve_dict.update({key:cve_list})
         cve_list = []
     
+    # deletes JSON file
+    os.remove(filename)
     return cve_dict
 
 def cve():
@@ -237,29 +244,57 @@ def update_model(model, diagram, ip_val, score_dict):
 
     trivium.api.element.patch(model, nodes)
 
-# Generate a markdown and pdf file
-def file_generator(fileName, node_ids, dictlist_nodes):
+# Generate a markdown and pdf file.
+def file_generator(name, node_ids, dictlist_nodes):
     
-    f = open(fileName + ".md", "w")
-    f.write("#\t NODE DATA REPORT\n\n")
+    cve_amount = 0
 
+    # Writes markdown file.
+    if name:
+        f = open(name + ".md", "w")
+        f.write("#\t " + name.split("/")[-1].upper() + "'S NODE DATA REPORT\n\n")
+    else:
+        f = open("report.md", "w")
+        f.write("#\t NODE DATA REPORT\n\n")
+    
     for i in range(len(node_ids)):
         f.write("")
         f.write("NodeIP: " + dictlist_nodes[i]["ip"] + "  \n")
         f.write("NodeID: " + dictlist_nodes[i]["id"] + "  \n")
-        if type(dictlist_nodes[i]["score"]) != None: 
-            f.write("**Distill Score:** " + str(dictlist_nodes[i]["score"]) + "  \n")
-        else:
-            f.write("**Distill Score:** " + 'none' + "  \n")
+        f.write("**Distill Score:** " + dictlist_nodes[i]["score"] + "  \n")
+        f.write("[Go to this Node's Vulnerability Report](#cve-report-for-"+str(dictlist_nodes[i]["ip"])+")" + "  \n")
         f.write('\n')
     
+    for i in range(len(node_ids)):
+        f.write("")
+        f.write("# CVE REPORT FOR " + str(dictlist_nodes[i]["ip"]))
+        f.write("\n\n")
+        f.write("[RETURN TO TOP](#node-data-report)")
+        f.write('\n\n')
+        cve_amount = len(dictlist_nodes[i]["cve"])
+        f.write("**Number of Vulnerabilities in Node:** " + str(cve_amount) + "  \n\n")
+        
+        # Adds CVE data to markdown report.
+        for cve in range(cve_amount):
+            cve_name = str(dictlist_nodes[i]["cve"][cve])
+            f.write("["+cve_name+"](https://cve.mitre.org/cgi-bin/cvename.cgi?name="+cve_name+") \n\n")
+
     f.close()
 
-    markdown = r'report.md'
+    # Converts markdown report to PDF using pandoc.
+    markdown_name = name + ".md"
+    if name:
+        markdown = markdown_name
+    else:
+        markdown = r'report.md'
 
     fileout = os.path.splitext(markdown)[0] + ".pdf"
     args = ['pandoc', markdown, '-o', fileout]
-    subprocess.Popen(args)
+    process = subprocess.Popen(args)
+    process.wait()
+
+    # deletes markdown file.
+    os.remove(markdown)
     
 def main():
     # initialize parser
@@ -269,12 +304,20 @@ def main():
     parser.add_argument("-m", "--model", type=str, help="Model Name", required=True)
     parser.add_argument("-d", "--diagram", type=str, help="Diagram Name", required=True)
     parser.add_argument("-n", "--nessus", type=argparse.FileType('r'), help="Nessus Files", required=True)
+    parser.add_argument("-o", "--optional", type=str, help="Optional Naming", required=False)
     args = parser.parse_args()
 
     # initialization from user's command-line input
     model = args.model
     diagram = args.diagram
     filename = args.nessus
+
+    if args.optional:
+        new_name = args.optional
+    else:
+        new_name = ''
+
+    print("Retrieving Trivium Model...\n")
 
     # retrieve nodes and edges from user's Trivium diagram
     nodes = get_nodes(model, diagram)
@@ -300,6 +343,8 @@ def main():
     dictlist_nodes = [dict() for x in range(len(node_ids))]
     dictlist_edges = [dict() for x in range(len(edge_ids))]
 
+    print("Scanning Nessus File...\n")
+
     # dictionaries that store distill scores and cve data.
     score_dict = distill_score(filename)
     cve_dict = cve()
@@ -312,11 +357,16 @@ def main():
     for i in range(len(edge_ids)):
         dictlist_edges[i] = {'id':edge_ids[i], 'source':source[i], 'target':target[i]}
 
-    # console output
-    print(json.dumps(nx.readwrite.node_link_data(create_graph(dictlist_nodes, dictlist_edges)), indent=4))
+    print("Updating Trivium Model with New Distill Scores...\n")
 
-    # Trivium call
     update_model(model, diagram, ip_val, score_dict)
 
-    # JSON, Markdown, PDF output
-    file_generator("report", node_ids, dictlist_nodes)
+    print("Creating NetworkX Model for Sublimate Usage...\n")
+
+    create_graph(dictlist_nodes, dictlist_edges)
+
+    print("Generating PDF Report...\n")
+
+    file_generator(new_name, node_ids, dictlist_nodes)
+
+    print("DONE")
