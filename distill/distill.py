@@ -363,7 +363,11 @@ def main():
 
     print("Creating NetworkX Model for Sublimate Usage...\n")
 
-    create_graph(dictlist_nodes, dictlist_edges)
+    graph = create_graph(dictlist_nodes, dictlist_edges)
+    
+    # Output NetworkX graph as JSON
+    with open(new_name + ".json", "w") as f:
+        f.write(json.dumps(nx.readwrite.node_link_data(graph)))
 
     print("Generating PDF Report...\n")
 
