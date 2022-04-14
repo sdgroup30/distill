@@ -12,6 +12,7 @@ WORKDIR /distill
 
 # Copy over the requirements for pip
 COPY requirements.txt requirements.txt
+COPY distill /distill/distill
 
 # install the required packages
 
@@ -19,19 +20,24 @@ COPY requirements.txt requirements.txt
 #COPY /.trivium /home/temp/.trivium
 
 # Create the venv
-RUN python3 -m venv venv-distill
+# RUN python3 -m venv venv-distill
 
-ENV VIRTUAL_ENV=/venv-distill
-RUN python3 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+# ENV VIRTUAL_ENV=/venv-distill
+# RUN python3 -m venv $VIRTUAL_ENV
+# ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-RUN apt-get update && \
-    apt-get install -y git && \
-    pip3 install -r requirements.txt
+# install the required packages
+RUN pip3 install -r requirements.txt && \
+    pip3 install markdown && \
+    pip3 install pdfkit && \
+    pip3 install pandoc && \
+    apt-get update && \
+    apt-get install -y pandoc texlive 
 
 RUN useradd -m temp
 USER temp
 
+WORKDIR /out
 
 # set sublimate.py as the entrypoint
-ENTRYPOINT ["/venv-distill/bin/distill"]
+ENTRYPOINT ["python","/distill/distill/distill.py"]

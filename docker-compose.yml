@@ -3,5 +3,6 @@ services:
   distill:
     build: .
     volumes:
-      - .:/distill
+      #- .:/distill
       - ${HOME}/.trivium:/home/temp/.trivium
+      - ${PWD}:/out
