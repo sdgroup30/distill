@@ -2,7 +2,6 @@ astroid==2.9.3
 certifi==2021.10.8
 charset-normalizer==2.0.11
 click==8.0.3
--e git+https://github.com/sdgroup30/distill.git@e12a2aac890dbd52e2ad80f530226e37679b3dde#egg=distill
 idna==3.3
 isort==5.10.1
 lazy-object-proxy==1.7.1
