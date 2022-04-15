@@ -341,7 +341,7 @@ def main():
     parser.add_argument("-m", "--model", type=str, help="Model Name", required=True)
     parser.add_argument("-d", "--diagram", type=str, help="Diagram Name", required=True)
     parser.add_argument("-n", "--nessus", type=argparse.FileType('r'), help="Nessus Files", required=True)
-    parser.add_argument("-o", "--optional", type=str, help="Optional Naming", required=False)
+    parser.add_argument("-o", "--output", type=str, help="Output File Name", required=False)
     args = parser.parse_args()
 
     print("Starting Distill at " + str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
@@ -352,10 +352,10 @@ def main():
     diagram = args.diagram
     filename = args.nessus
 
-    if args.optional:
-        new_name = args.optional
+    if args.output:
+        new_name = args.output
     else:
-        new_name = ''
+        new_name = 'distill'
 
     print("Retrieving Trivium Model...\n")
 
