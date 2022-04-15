@@ -9,34 +9,34 @@ import subprocess
 import os
 import datetime
 
+
 # Library to translate Nessus scans into readable JSON formatting
 def csv_to_json(csvFilePath, jsonFilePath):
-        jsonArray = []
-        labels = ['IP Address', 'Risk Factor', 'Severity', 'CVE', 'Base Score', 'Temporal Score', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
+    '''Converts the newly created CSV file into a JSON file.'''
 
-        # read csv file
-        with open(csvFilePath, encoding='utf-8') as csvf:
-            # load csv file data using csv library's dictionary reader
-            csvReader = csv.DictReader(csvf, labels)
+    jsonArray = []
+    labels = ['IP Address', 'Risk Factor', 'Severity', 'CVE', 'Base Score', 'Temporal Score', 'Port', 'Protocol', 'Plugin ID', 'Plugin Name']
 
-            # convert each csv row into python dict
-            for row in csvReader:
-                # add this python dict to json array
-                # jsonArray.append(labels)
-                jsonArray.append(row)
+    # read csv file
+    with open(csvFilePath, encoding='utf-8') as csvf:
+        # load csv file data using csv library's dictionary reader
+        csvReader = csv.DictReader(csvf, labels)
+
+        # convert each csv row into python dict
+        for row in csvReader:
+            jsonArray.append(row)
 
 
-        # convert python jsonArray to JSON String and write to file
-        with open(jsonFilePath, 'w', encoding='utf-8') as jsonf:
-            jsonString = json.dumps(jsonArray, indent=4)
-            jsonf.write(jsonString)    
-    
-# helper function to retrieve a list of nodes
+    # convert python jsonArray to JSON String and write to file
+    with open(jsonFilePath, 'w', encoding='utf-8') as jsonf:
+        jsonString = json.dumps(jsonArray, indent=4)
+        jsonf.write(jsonString)
+
 def get_nodes(model_name, diagram_name):
-    # set allowed types
-    #todo: why does this break properties? -> no field -> separate dictlist for start/end
-    ALLOWED_NODE_TYPES = ['td.cyber.node'] #, 'td.cyber.database', 'td.systems.actor']
-    # ALLOWED_EDGE_TYPES = ['td.edge']
+    '''Grabs network model information regarding the graph nodes
+    by using the Trivium API.'''
+
+    ALLOWED_NODE_TYPES = ['td.cyber.node']
 
     # set params
     params = {
@@ -52,7 +52,10 @@ def get_nodes(model_name, diagram_name):
 
 # Grabs the edges from a user's Trivium diagram
 def get_edges(model_name, diagram_name):
-    ALLOWED_NODE_TYPES = ['td.cyber.node'] #, 'td.cyber.database', 'td.systems.actor']
+    '''Grabs network model information regarding the graph edges
+    by using the Trivium API.'''
+    
+    ALLOWED_NODE_TYPES = ['td.cyber.node']
     ALLOWED_EDGE_TYPES = ['td.edge']
 
     # set params
@@ -69,8 +72,9 @@ def get_edges(model_name, diagram_name):
     edges = [e for e in elements if e['type'] in ALLOWED_EDGE_TYPES and e['source'] in node_ids and e['target'] in node_ids]
     return edges
 
-# Output networkX graph object with properties of IP and distill_score / 
 def create_graph(nodelist, edgelist):
+    '''Creates the NetworkX model using two dictionary
+    lists, one for the nodes and one for the edges.'''
 
     G = nx.Graph()
 
@@ -79,10 +83,13 @@ def create_graph(nodelist, edgelist):
 
     for i in range(len(edgelist)):
         G.add_edge(edgelist[i]['source'], edgelist[i]['target'], id=edgelist[i]['id'])
-    
+
     return G
 
 def add_scores(jsonFilePath):
+    '''Creates the Distill Score from Temporal and Base score
+    information found in Nessus Scan.'''
+
     distill_info = {}
     score = 0
     base_score = 0
@@ -92,7 +99,7 @@ def add_scores(jsonFilePath):
     # Opens the json file "report.json"
     with open(jsonFilePath, "r") as f:
         data = json.load(f)
-    
+
     # Grabs the IP Address of the machines and creates the dictionary.
     for ip in range(len(data)):
         distill_info.update({data[ip].get('IP Address'): '0'})
@@ -101,7 +108,7 @@ def add_scores(jsonFilePath):
     for key in distill_info.keys():
         for sev in range(len(data)):
             if data[sev].get('IP Address') == key:
-                
+
                 # Cutoff threshold at Severity scores of Medium or more.
                 if int(data[sev].get('Severity')) >= 2:
                     base_score = (float(data[sev].get('Base Score')) * float(data[sev].get('Temporal Score'))) + base_score
@@ -125,6 +132,15 @@ def add_scores(jsonFilePath):
     return distill_info
 
 def distill_score(filename):
+    '''Pulls necessary information from the Nessus Scan and
+    converts it into the appropiate data formats.
+    
+    This function first generates a CSV file using the .nessus file
+    given from the Nessus Scan. Information such as CVE scores and IP addresses
+    are put into the CSV file. A helper function is than called to convert that
+    CVE file into a JSON file. Once the JSON file is returned a second helper
+    function is used to create the Distill Scores.'''
+
     score_dict = {}
     tree = ET.parse(filename)
 
@@ -149,7 +165,7 @@ def distill_score(filename):
                     temp_score = '0' # this is informational
                 else:
                     temp_score = item.find('cvss_temporal_score').text
-                
+
                 if(type(item.find('cve')) == type(None)):
                     cve = ' ' # this is informational
                 else:
@@ -167,8 +183,7 @@ def distill_score(filename):
                 pluginID + ',' + \
                 '"' + pluginName + '"' + '\n'
                 )
-
-    
+                
     # Set filepaths
     csvFilePath = r'report.csv'
     jsonFilePath = r'report.json'
@@ -187,13 +202,16 @@ def distill_score(filename):
 
 # Helper function to acquire CVE information
 def capture_cve(filename):
+    '''Helper function that creates a Dictionary with
+    each IP address and a list of their vulnerabilities.'''
+
     cve_dict = {}
     cve_list = []
 
     # Opens the json file "report.json"
     with open(filename, "r") as f:
         data = json.load(f)
-    
+
     # Grabs the IP Address of the machines and creates the dictionary.
     for ip in range(len(data)):
         cve_dict.update({data[ip].get('IP Address'): []})
@@ -206,25 +224,32 @@ def capture_cve(filename):
 
         cve_dict.update({key:cve_list})
         cve_list = []
-    
+
     # deletes JSON file
     os.remove(filename)
     return cve_dict
 
 def cve():
+    '''Function that stores necessary CVE information
+    and utilizes helper function capture_cve.'''
+
     cve_dict = {}
     jsonFilePath = r'report.json'
     cve_dict = capture_cve(jsonFilePath)
     return cve_dict
 
-# Match the IP addresses between Nessus and Trivium
 def match_ip(ip_val, distill_info):
+    '''Simple function used to match IP addresses from the Nessus Scan
+    and Trivium model.'''
+
     for key in distill_info.keys():
         if ip_val == key:
             return distill_info[key]
 
-# Updates the Trivium Model with the Distill Scores
 def update_model(model, diagram, ip_val, score_dict):
+    '''Passes new Distill Score information into the user's
+    Trivium network model.'''
+
     ALLOWED_NODE_TYPES = ['td.cyber.node']
 
     # This tells us whats in the diagram.
@@ -244,9 +269,10 @@ def update_model(model, diagram, ip_val, score_dict):
 
     trivium.api.element.patch(model, nodes)
 
-# Generate a markdown and pdf file.
 def file_generator(name, node_ids, dictlist_nodes):
-    
+    '''Generates a PDF file that links to CVE information
+    regarding each vulnerability in each node.'''
+
     cve_amount = 0
 
     # Writes markdown file.
@@ -256,7 +282,7 @@ def file_generator(name, node_ids, dictlist_nodes):
     else:
         f = open("report.md", "w")
         f.write("#\t NODE DATA REPORT\n\n")
-    
+
     for i in range(len(node_ids)):
         f.write("")
         f.write("NodeIP: " + dictlist_nodes[i]["ip"] + "  \n")
@@ -264,7 +290,7 @@ def file_generator(name, node_ids, dictlist_nodes):
         f.write("**Distill Score:** " + dictlist_nodes[i]["score"] + "  \n")
         f.write("[Go to this Node's Vulnerability Report](#cve-report-for-"+str(dictlist_nodes[i]["ip"])+")" + "  \n")
         f.write('\n')
-    
+
     for i in range(len(node_ids)):
         f.write("")
         f.write("# CVE REPORT FOR " + str(dictlist_nodes[i]["ip"]))
@@ -273,7 +299,7 @@ def file_generator(name, node_ids, dictlist_nodes):
         f.write('\n\n')
         cve_amount = len(dictlist_nodes[i]["cve"])
         f.write("**Number of Vulnerabilities in Node:** " + str(cve_amount) + "  \n\n")
-        
+
         # Adds CVE data to markdown report.
         for cve in range(cve_amount):
             cve_name = str(dictlist_nodes[i]["cve"][cve])
@@ -295,8 +321,19 @@ def file_generator(name, node_ids, dictlist_nodes):
 
     # deletes markdown file.
     os.remove(markdown)
-    
+
 def main():
+    '''Distill is a command line tool that is used in line with
+    the Trivium graphing applicaiton.
+    
+    This command line tool will require the user to have access to their
+    Trivium account and be connected to it on use. The tool will also
+    require information regarding the model's ID, diagram's ID, and the
+    Nessus file from the scan. With all of this information, the tool will
+    generate an original Distill Score and a NetworkX model for the user. The
+    user will also be supplied a PDF report regarding their network model's
+    vulnerability information.'''
+
     # initialize parser
     parser = argparse.ArgumentParser()
 
