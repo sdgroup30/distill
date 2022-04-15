@@ -85,11 +85,8 @@ def add_scores(jsonFilePath):
     distill_info = {}
     score = 0
     base_score = 0
-    temp_score = 0
-    avg_base_score = 0
-    avg_temp_score = 0
     base_count = 0
-    temp_count = 0
+    max_score = float("-inf")
 
     # Opens the json file "report.json"
     with open(jsonFilePath, "r") as f:
@@ -106,22 +103,24 @@ def add_scores(jsonFilePath):
                 
                 # Cutoff threshold at Severity scores of Medium or more.
                 if int(data[sev].get('Severity')) >= 2:
-                    base_score = float(data[sev].get('Base Score')) + base_score 
-                    temp_score = float(data[sev].get('Temporal Score')) + temp_score 
+                    base_score = (float(data[sev].get('Base Score')) * float(data[sev].get('Temporal Score'))) + base_score
                 
                     if float(data[sev].get('Base Score')) != 0 and float(data[sev].get('Base Score')) != None:
                         base_count = base_count + 1
                 
-                    if float(data[sev].get('Temporal Score')) != 0 and float(data[sev].get('Temporal Score')) != None:
-                        temp_count = temp_count + 1
-
-        avg_base_score = base_score / base_count
-        avg_temp_score = temp_score / temp_count
-        score = round((avg_base_score + avg_temp_score) / 100, 4)
+        score = base_score
+        
+        if score > max_score:
+            max_score = score
 
         distill_info.update({key:str(score)})
         score = 0
 
+
+    # Bring all scores to < 1.0
+    power = len(str(int(max_score)))
+    for ip in distill_info:
+        distill_info[ip] = str(float(distill_info[ip])/(10**power))
     return distill_info
 
 def distill_score(filename):
