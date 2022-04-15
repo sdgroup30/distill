@@ -7,6 +7,7 @@ import networkx as nx
 import xml.etree.ElementTree as ET
 import subprocess
 import os
+import datetime
 
 # Library to translate Nessus scans into readable JSON formatting
 def csv_to_json(csvFilePath, jsonFilePath):
@@ -305,6 +306,9 @@ def main():
     parser.add_argument("-n", "--nessus", type=argparse.FileType('r'), help="Nessus Files", required=True)
     parser.add_argument("-o", "--optional", type=str, help="Optional Naming", required=False)
     args = parser.parse_args()
+
+    print("Starting Distill at " + str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    print()
 
     # initialization from user's command-line input
     model = args.model
